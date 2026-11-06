@@ -1,0 +1,673 @@
+openapi: 3.0.3
+info:
+  title: Email Management API
+  version: 1.0.0
+  description: |
+    API contract for the Web Technologies semester project (THM - WS 2026).
+    This API provides end-to-end functionality for managing email drafts, 
+    handling file attachments, transmitting emails, and inspecting email details.
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local Development Server
+
+paths:
+  /emails:
+    get:
+      summary: List emails with pagination and filters
+      operationId: getEmails
+      parameters:
+        - name: page
+          in: query
+          required: false
+          description: Page number for pagination (1-based index).
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          description: Number of items per page.
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: status
+          in: query
+          required: false
+          description: Filter emails by transmission status.
+          schema:
+            $ref: '#/components/schemas/EmailStatus'
+        - name: source
+          in: query
+          required: false
+          description: Filter emails by origin source.
+          schema:
+            $ref: '#/components/schemas/EmailSource'
+      responses:
+        '200':
+          description: A paginated list of email summaries.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedEmailList'
+              example:
+                items:
+                  - id: "123e4567-e89b-12d3-a456-426614174000"
+                    subject: "Project Update"
+                    from: "user@example.com"
+                    to: ["recipient@example.com"]
+                    status: "draft"
+                    source: "intern"
+                    createdAt: "2026-10-15T10:30:00Z"
+                    sentAt: null
+                page: 1
+                limit: 20
+                totalItems: 1
+                totalPages: 1
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+
+    post:
+      summary: Create a new draft email
+      operationId: createEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailCreateRequest'
+            example:
+              to: ["alice@example.com"]
+              cc: []
+              bcc: []
+              replyTo: []
+              subject: "Meeting Agenda"
+              content: "Here is the agenda for our upcoming team meeting."
+      responses:
+        '201':
+          description: Email created successfully as a draft.
+          headers:
+            Location:
+              description: URI of the newly created email resource.
+              schema:
+                type: string
+                example: "/emails/123e4567-e89b-12d3-a456-426614174000"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDetail'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422UnprocessableEntity'
+
+  /emails/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Unique identifier of the email.
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Get detailed information of a specific email
+      operationId: getEmailById
+      responses:
+        '200':
+          description: Detailed email representation including attachment metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDetail'
+              example:
+                id: "123e4567-e89b-12d3-a456-426614174000"
+                from: "user@example.com"
+                to: ["alice@example.com"]
+                cc: ["bob@example.com"]
+                bcc: []
+                replyTo: ["user@example.com"]
+                subject: "Project Update"
+                content: "Please review the attached project schedule."
+                createdAt: "2026-10-15T10:30:00Z"
+                updatedAt: "2026-10-15T10:35:00Z"
+                sentAt: null
+                status: "draft"
+                source: "intern"
+                attachments:
+                  - id: "a1b2c3d4-e89b-12d3-a456-426614174001"
+                    filename: "schedule.pdf"
+                    mimeType: "application/pdf"
+                    size: 1048576
+        '404':
+          $ref: '#/components/responses/404NotFound'
+
+    patch:
+      summary: Update a draft email
+      operationId: updateEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailUpdateRequest'
+            example:
+              subject: "Updated Meeting Agenda"
+              content: "The meeting location has been changed to Room 301."
+      responses:
+        '200':
+          description: Email updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDetail'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '409':
+          $ref: '#/components/responses/409StateConflict'
+
+    delete:
+      summary: Permanently delete an email and its attachments
+      operationId: deleteEmail
+      responses:
+        '204':
+          description: Email and all associated attachments were permanently deleted.
+        '404':
+          $ref: '#/components/responses/404NotFound'
+
+  /emails/{id}/transmissions:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Unique identifier of the draft email to send.
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Create a transmission attempt to send the email
+      operationId: sendEmail
+      responses:
+        '201':
+          description: Transmission attempt processed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransmissionResult'
+              example:
+                id: "987f6543-e89b-12d3-a456-426614174999"
+                emailId: "123e4567-e89b-12d3-a456-426614174000"
+                status: "sent"
+                sentAt: "2026-10-15T11:00:00Z"
+                errorMessage: null
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '409':
+          $ref: '#/components/responses/409StateConflict'
+
+  /emails/{emailId}/attachments:
+    parameters:
+      - name: emailId
+        in: path
+        required: true
+        description: Unique identifier of the associated email.
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: List metadata of all attachments for an email
+      operationId: getAttachments
+      responses:
+        '200':
+          description: List of attachment metadata.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AttachmentMetadata'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+
+    post:
+      summary: Upload a new file attachment to a draft email
+      operationId: uploadAttachment
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Binary file content to upload.
+      responses:
+        '201':
+          description: Attachment uploaded successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentMetadata'
+              example:
+                id: "a1b2c3d4-e89b-12d3-a456-426614174001"
+                filename: "document.pdf"
+                mimeType: "application/pdf"
+                size: 204800
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '409':
+          $ref: '#/components/responses/409StateConflict'
+        '415':
+          $ref: '#/components/responses/415UnsupportedMediaType'
+
+  /emails/{emailId}/attachments/{attachmentId}:
+    parameters:
+      - name: emailId
+        in: path
+        required: true
+        description: Unique identifier of the associated email.
+        schema:
+          type: string
+          format: uuid
+      - name: attachmentId
+        in: path
+        required: true
+        description: Unique identifier of the attachment.
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Get metadata of a specific attachment
+      operationId: getAttachmentMetadata
+      responses:
+        '200':
+          description: Attachment metadata details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentMetadata'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+
+    delete:
+      summary: Delete an attachment from a draft email
+      operationId: deleteAttachment
+      responses:
+        '204':
+          description: Attachment removed successfully.
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '409':
+          $ref: '#/components/responses/409StateConflict'
+
+  /emails/{emailId}/attachments/{attachmentId}/content:
+    parameters:
+      - name: emailId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: attachmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Download binary content of an attachment
+      operationId: downloadAttachmentContent
+      responses:
+        '200':
+          description: Binary content of the attached file.
+          headers:
+            Content-Disposition:
+              description: Suggests a filename for saving the file response.
+              schema:
+                type: string
+                example: 'attachment; filename="document.pdf"'
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/404NotFound'
+
+components:
+  schemas:
+    EmailStatus:
+      type: string
+      enum: [draft, sent, error]
+      description: Current state of the email lifecycle.
+
+    EmailSource:
+      type: string
+      enum: [intern, extern]
+      description: Indicates if the email was generated internally or received externally.
+
+    EmailSummary:
+      type: object
+      required:
+        - id
+        - subject
+        - from
+        - to
+        - status
+        - source
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        subject:
+          type: string
+        from:
+          type: string
+          format: email
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        status:
+          $ref: '#/components/schemas/EmailStatus'
+        source:
+          $ref: '#/components/schemas/EmailSource'
+        createdAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    EmailDetail:
+      type: object
+      required:
+        - id
+        - subject
+        - content
+        - from
+        - to
+        - cc
+        - bcc
+        - replyTo
+        - status
+        - source
+        - createdAt
+        - updatedAt
+        - attachments
+      properties:
+        id:
+          type: string
+          format: uuid
+        from:
+          type: string
+          format: email
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+        bcc:
+          type: array
+          items:
+            type: string
+            format: email
+        replyTo:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+        content:
+          type: string
+        status:
+          $ref: '#/components/schemas/EmailStatus'
+        source:
+          $ref: '#/components/schemas/EmailSource'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttachmentMetadata'
+
+    EmailCreateRequest:
+      type: object
+      required:
+        - subject
+        - content
+      properties:
+        to:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: email
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+        bcc:
+          type: array
+          items:
+            type: string
+            format: email
+        replyTo:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+          minLength: 1
+          maxLength: 255
+        content:
+          type: string
+          minLength: 1
+
+    EmailUpdateRequest:
+      type: object
+      properties:
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+        bcc:
+          type: array
+          items:
+            type: string
+            format: email
+        replyTo:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+          minLength: 1
+          maxLength: 255
+        content:
+          type: string
+          minLength: 1
+
+    AttachmentMetadata:
+      type: object
+      required:
+        - id
+        - filename
+        - mimeType
+        - size
+      properties:
+        id:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        mimeType:
+          type: string
+          example: "application/pdf"
+        size:
+          type: integer
+          description: File size in bytes.
+          example: 1048576
+
+    TransmissionResult:
+      type: object
+      required:
+        - id
+        - emailId
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        emailId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/EmailStatus'
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+
+    PaginatedEmailList:
+      type: object
+      required:
+        - items
+        - page
+        - limit
+        - totalItems
+        - totalPages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmailSummary'
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalItems:
+          type: integer
+        totalPages:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - timestamp
+      properties:
+        code:
+          type: string
+          example: "VALIDATION_FAILED"
+        message:
+          type: string
+          example: "At least one recipient (to, cc, bcc) must be provided."
+        timestamp:
+          type: string
+          format: date-time
+        details:
+          type: array
+          items:
+            type: string
+
+  responses:
+    400BadRequest:
+      description: Invalid request syntax or query parameters.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: "BAD_REQUEST"
+            message: "Invalid JSON format or missing required fields."
+            timestamp: "2026-10-15T12:00:00Z"
+
+    404NotFound:
+      description: The requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: "RESOURCE_NOT_FOUND"
+            message: "Email with the specified ID does not exist."
+            timestamp: "2026-10-15T12:00:00Z"
+
+    409StateConflict:
+      description: Prohibited action due to resource state (e.g., editing a sent email).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: "EMAIL_ALREADY_SENT"
+            message: "Emails with status 'sent' are read-only and cannot be modified or re-sent."
+            timestamp: "2026-10-15T12:00:00Z"
+
+    415UnsupportedMediaType:
+      description: Uploaded payload or media type is not supported.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: "UNSUPPORTED_MEDIA_TYPE"
+            message: "Content-Type must be multipart/form-data."
+            timestamp: "2026-10-15T12:00:00Z"
+
+    422UnprocessableEntity:
+      description: Domain validation failed (e.g., missing all recipient fields).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: "MISSING_RECIPIENTS"
+            message: "At least one valid email address must be provided in to, cc, or bcc."
+            timestamp: "2026-10-15T12:00:00Z"

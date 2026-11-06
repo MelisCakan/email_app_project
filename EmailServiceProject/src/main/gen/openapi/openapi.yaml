@@ -1,0 +1,1008 @@
+openapi: 3.0.3
+info:
+  description: "API contract for the Web Technologies semester project (THM - WS 2026).\n\
+    This API provides end-to-end functionality for managing email drafts, \nhandling\
+    \ file attachments, transmitting emails, and inspecting email details.\n"
+  title: Email Management API
+  version: 1.0.0
+servers:
+- description: Local Development Server
+  url: http://localhost:8080/api/v1
+paths:
+  /emails:
+    get:
+      operationId: getEmails
+      parameters:
+      - description: Page number for pagination (1-based index).
+        explode: true
+        in: query
+        name: page
+        required: false
+        schema:
+          default: 1
+          minimum: 1
+          type: integer
+        style: form
+      - description: Number of items per page.
+        explode: true
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 20
+          maximum: 100
+          minimum: 1
+          type: integer
+        style: form
+      - description: Filter emails by transmission status.
+        explode: true
+        in: query
+        name: status
+        required: false
+        schema:
+          $ref: '#/components/schemas/EmailStatus'
+        style: form
+      - description: Filter emails by origin source.
+        explode: true
+        in: query
+        name: source
+        required: false
+        schema:
+          $ref: '#/components/schemas/EmailSource'
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              example:
+                items:
+                - id: 123e4567-e89b-12d3-a456-426614174000
+                  subject: Project Update
+                  from: user@example.com
+                  to:
+                  - recipient@example.com
+                  status: draft
+                  source: intern
+                  createdAt: 2026-10-15T10:30:00Z
+                  sentAt: null
+                page: 1
+                limit: 20
+                totalItems: 1
+                totalPages: 1
+              schema:
+                $ref: '#/components/schemas/PaginatedEmailList'
+          description: A paginated list of email summaries.
+        "400":
+          content:
+            application/json:
+              example:
+                code: BAD_REQUEST
+                message: Invalid JSON format or missing required fields.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Invalid request syntax or query parameters.
+      summary: List emails with pagination and filters
+    post:
+      operationId: createEmail
+      requestBody:
+        content:
+          application/json:
+            example:
+              to:
+              - alice@example.com
+              cc: []
+              bcc: []
+              replyTo: []
+              subject: Meeting Agenda
+              content: Here is the agenda for our upcoming team meeting.
+            schema:
+              $ref: '#/components/schemas/EmailCreateRequest'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDetail'
+          description: Email created successfully as a draft.
+          headers:
+            Location:
+              description: URI of the newly created email resource.
+              explode: false
+              schema:
+                example: /emails/123e4567-e89b-12d3-a456-426614174000
+                type: string
+              style: simple
+        "400":
+          content:
+            application/json:
+              example:
+                code: BAD_REQUEST
+                message: Invalid JSON format or missing required fields.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Invalid request syntax or query parameters.
+        "422":
+          content:
+            application/json:
+              example:
+                code: MISSING_RECIPIENTS
+                message: "At least one valid email address must be provided in to,\
+                  \ cc, or bcc."
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: "Domain validation failed (e.g., missing all recipient fields)."
+      summary: Create a new draft email
+  /emails/{id}:
+    delete:
+      operationId: deleteEmail
+      parameters:
+      - description: Unique identifier of the email.
+        explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "204":
+          description: Email and all associated attachments were permanently deleted.
+        "404":
+          content:
+            application/json:
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: Email with the specified ID does not exist.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: The requested resource was not found.
+      summary: Permanently delete an email and its attachments
+    get:
+      operationId: getEmailById
+      parameters:
+      - description: Unique identifier of the email.
+        explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              example:
+                id: 123e4567-e89b-12d3-a456-426614174000
+                from: user@example.com
+                to:
+                - alice@example.com
+                cc:
+                - bob@example.com
+                bcc: []
+                replyTo:
+                - user@example.com
+                subject: Project Update
+                content: Please review the attached project schedule.
+                createdAt: 2026-10-15T10:30:00Z
+                updatedAt: 2026-10-15T10:35:00Z
+                sentAt: null
+                status: draft
+                source: intern
+                attachments:
+                - id: a1b2c3d4-e89b-12d3-a456-426614174001
+                  filename: schedule.pdf
+                  mimeType: application/pdf
+                  size: 1048576
+              schema:
+                $ref: '#/components/schemas/EmailDetail'
+          description: Detailed email representation including attachment metadata.
+        "404":
+          content:
+            application/json:
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: Email with the specified ID does not exist.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: The requested resource was not found.
+      summary: Get detailed information of a specific email
+    patch:
+      operationId: updateEmail
+      parameters:
+      - description: Unique identifier of the email.
+        explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            example:
+              subject: Updated Meeting Agenda
+              content: The meeting location has been changed to Room 301.
+            schema:
+              $ref: '#/components/schemas/EmailUpdateRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDetail'
+          description: Email updated successfully.
+        "400":
+          content:
+            application/json:
+              example:
+                code: BAD_REQUEST
+                message: Invalid JSON format or missing required fields.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Invalid request syntax or query parameters.
+        "404":
+          content:
+            application/json:
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: Email with the specified ID does not exist.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: The requested resource was not found.
+        "409":
+          content:
+            application/json:
+              example:
+                code: EMAIL_ALREADY_SENT
+                message: Emails with status 'sent' are read-only and cannot be modified
+                  or re-sent.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: "Prohibited action due to resource state (e.g., editing a sent\
+            \ email)."
+      summary: Update a draft email
+  /emails/{id}/transmissions:
+    post:
+      operationId: sendEmail
+      parameters:
+      - description: Unique identifier of the draft email to send.
+        explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "201":
+          content:
+            application/json:
+              example:
+                id: 987f6543-e89b-12d3-a456-426614174999
+                emailId: 123e4567-e89b-12d3-a456-426614174000
+                status: sent
+                sentAt: 2026-10-15T11:00:00Z
+                errorMessage: null
+              schema:
+                $ref: '#/components/schemas/TransmissionResult'
+          description: Transmission attempt processed.
+        "404":
+          content:
+            application/json:
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: Email with the specified ID does not exist.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: The requested resource was not found.
+        "409":
+          content:
+            application/json:
+              example:
+                code: EMAIL_ALREADY_SENT
+                message: Emails with status 'sent' are read-only and cannot be modified
+                  or re-sent.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: "Prohibited action due to resource state (e.g., editing a sent\
+            \ email)."
+      summary: Create a transmission attempt to send the email
+  /emails/{emailId}/attachments:
+    get:
+      operationId: getAttachments
+      parameters:
+      - description: Unique identifier of the associated email.
+        explode: false
+        in: path
+        name: emailId
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/AttachmentMetadata'
+                type: array
+          description: List of attachment metadata.
+        "404":
+          content:
+            application/json:
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: Email with the specified ID does not exist.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: The requested resource was not found.
+      summary: List metadata of all attachments for an email
+    post:
+      operationId: uploadAttachment
+      parameters:
+      - description: Unique identifier of the associated email.
+        explode: false
+        in: path
+        name: emailId
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/uploadAttachment_request'
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              example:
+                id: a1b2c3d4-e89b-12d3-a456-426614174001
+                filename: document.pdf
+                mimeType: application/pdf
+                size: 204800
+              schema:
+                $ref: '#/components/schemas/AttachmentMetadata'
+          description: Attachment uploaded successfully.
+        "400":
+          content:
+            application/json:
+              example:
+                code: BAD_REQUEST
+                message: Invalid JSON format or missing required fields.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Invalid request syntax or query parameters.
+        "404":
+          content:
+            application/json:
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: Email with the specified ID does not exist.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: The requested resource was not found.
+        "409":
+          content:
+            application/json:
+              example:
+                code: EMAIL_ALREADY_SENT
+                message: Emails with status 'sent' are read-only and cannot be modified
+                  or re-sent.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: "Prohibited action due to resource state (e.g., editing a sent\
+            \ email)."
+        "415":
+          content:
+            application/json:
+              example:
+                code: UNSUPPORTED_MEDIA_TYPE
+                message: Content-Type must be multipart/form-data.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Uploaded payload or media type is not supported.
+      summary: Upload a new file attachment to a draft email
+  /emails/{emailId}/attachments/{attachmentId}:
+    delete:
+      operationId: deleteAttachment
+      parameters:
+      - description: Unique identifier of the associated email.
+        explode: false
+        in: path
+        name: emailId
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      - description: Unique identifier of the attachment.
+        explode: false
+        in: path
+        name: attachmentId
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "204":
+          description: Attachment removed successfully.
+        "404":
+          content:
+            application/json:
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: Email with the specified ID does not exist.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: The requested resource was not found.
+        "409":
+          content:
+            application/json:
+              example:
+                code: EMAIL_ALREADY_SENT
+                message: Emails with status 'sent' are read-only and cannot be modified
+                  or re-sent.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: "Prohibited action due to resource state (e.g., editing a sent\
+            \ email)."
+      summary: Delete an attachment from a draft email
+    get:
+      operationId: getAttachmentMetadata
+      parameters:
+      - description: Unique identifier of the associated email.
+        explode: false
+        in: path
+        name: emailId
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      - description: Unique identifier of the attachment.
+        explode: false
+        in: path
+        name: attachmentId
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentMetadata'
+          description: Attachment metadata details.
+        "404":
+          content:
+            application/json:
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: Email with the specified ID does not exist.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: The requested resource was not found.
+      summary: Get metadata of a specific attachment
+  /emails/{emailId}/attachments/{attachmentId}/content:
+    get:
+      operationId: downloadAttachmentContent
+      parameters:
+      - explode: false
+        in: path
+        name: emailId
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: attachmentId
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                format: binary
+                type: string
+          description: Binary content of the attached file.
+          headers:
+            Content-Disposition:
+              description: Suggests a filename for saving the file response.
+              explode: false
+              schema:
+                example: attachment; filename="document.pdf"
+                type: string
+              style: simple
+        "404":
+          content:
+            application/json:
+              example:
+                code: RESOURCE_NOT_FOUND
+                message: Email with the specified ID does not exist.
+                timestamp: 2026-10-15T12:00:00Z
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: The requested resource was not found.
+      summary: Download binary content of an attachment
+components:
+  responses:
+    "400BadRequest":
+      content:
+        application/json:
+          example:
+            code: BAD_REQUEST
+            message: Invalid JSON format or missing required fields.
+            timestamp: 2026-10-15T12:00:00Z
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      description: Invalid request syntax or query parameters.
+    "404NotFound":
+      content:
+        application/json:
+          example:
+            code: RESOURCE_NOT_FOUND
+            message: Email with the specified ID does not exist.
+            timestamp: 2026-10-15T12:00:00Z
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      description: The requested resource was not found.
+    "409StateConflict":
+      content:
+        application/json:
+          example:
+            code: EMAIL_ALREADY_SENT
+            message: Emails with status 'sent' are read-only and cannot be modified
+              or re-sent.
+            timestamp: 2026-10-15T12:00:00Z
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      description: "Prohibited action due to resource state (e.g., editing a sent\
+        \ email)."
+    "415UnsupportedMediaType":
+      content:
+        application/json:
+          example:
+            code: UNSUPPORTED_MEDIA_TYPE
+            message: Content-Type must be multipart/form-data.
+            timestamp: 2026-10-15T12:00:00Z
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      description: Uploaded payload or media type is not supported.
+    "422UnprocessableEntity":
+      content:
+        application/json:
+          example:
+            code: MISSING_RECIPIENTS
+            message: "At least one valid email address must be provided in to, cc,\
+              \ or bcc."
+            timestamp: 2026-10-15T12:00:00Z
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      description: "Domain validation failed (e.g., missing all recipient fields)."
+  schemas:
+    EmailStatus:
+      description: Current state of the email lifecycle.
+      enum:
+      - draft
+      - sent
+      - error
+      type: string
+    EmailSource:
+      description: Indicates if the email was generated internally or received externally.
+      enum:
+      - intern
+      - extern
+      type: string
+    EmailSummary:
+      example:
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        subject: subject
+        from: from
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        to:
+        - to
+        - to
+        source: intern
+        sentAt: 2000-01-23T04:56:07.000+00:00
+        status: draft
+      properties:
+        id:
+          format: uuid
+          type: string
+        subject:
+          type: string
+        from:
+          format: email
+          type: string
+        to:
+          items:
+            format: email
+            type: string
+          type: array
+        status:
+          $ref: '#/components/schemas/EmailStatus'
+        source:
+          $ref: '#/components/schemas/EmailSource'
+        createdAt:
+          format: date-time
+          type: string
+        sentAt:
+          format: date-time
+          nullable: true
+          type: string
+      required:
+      - createdAt
+      - from
+      - id
+      - source
+      - status
+      - subject
+      - to
+      type: object
+    EmailDetail:
+      example:
+        cc:
+        - cc
+        - cc
+        bcc:
+        - bcc
+        - bcc
+        attachments:
+        - filename: filename
+          size: 1048576
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          mimeType: application/pdf
+        - filename: filename
+          size: 1048576
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          mimeType: application/pdf
+        subject: subject
+        source: intern
+        sentAt: 2000-01-23T04:56:07.000+00:00
+        content: content
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        replyTo:
+        - replyTo
+        - replyTo
+        from: from
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        to:
+        - to
+        - to
+        status: draft
+        updatedAt: 2000-01-23T04:56:07.000+00:00
+      properties:
+        id:
+          format: uuid
+          type: string
+        from:
+          format: email
+          type: string
+        to:
+          items:
+            format: email
+            type: string
+          type: array
+        cc:
+          items:
+            format: email
+            type: string
+          type: array
+        bcc:
+          items:
+            format: email
+            type: string
+          type: array
+        replyTo:
+          items:
+            format: email
+            type: string
+          type: array
+        subject:
+          type: string
+        content:
+          type: string
+        status:
+          $ref: '#/components/schemas/EmailStatus'
+        source:
+          $ref: '#/components/schemas/EmailSource'
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        sentAt:
+          format: date-time
+          nullable: true
+          type: string
+        attachments:
+          items:
+            $ref: '#/components/schemas/AttachmentMetadata'
+          type: array
+      required:
+      - attachments
+      - bcc
+      - cc
+      - content
+      - createdAt
+      - from
+      - id
+      - replyTo
+      - source
+      - status
+      - subject
+      - to
+      - updatedAt
+      type: object
+    EmailCreateRequest:
+      example:
+        cc:
+        - cc
+        - cc
+        bcc:
+        - bcc
+        - bcc
+        subject: subject
+        replyTo:
+        - replyTo
+        - replyTo
+        to:
+        - to
+        - to
+        content: content
+      properties:
+        to:
+          items:
+            format: email
+            type: string
+          minItems: 1
+          type: array
+        cc:
+          items:
+            format: email
+            type: string
+          type: array
+        bcc:
+          items:
+            format: email
+            type: string
+          type: array
+        replyTo:
+          items:
+            format: email
+            type: string
+          type: array
+        subject:
+          maxLength: 255
+          minLength: 1
+          type: string
+        content:
+          minLength: 1
+          type: string
+      required:
+      - content
+      - subject
+      type: object
+    EmailUpdateRequest:
+      example:
+        cc:
+        - cc
+        - cc
+        bcc:
+        - bcc
+        - bcc
+        subject: subject
+        replyTo:
+        - replyTo
+        - replyTo
+        to:
+        - to
+        - to
+        content: content
+      properties:
+        to:
+          items:
+            format: email
+            type: string
+          type: array
+        cc:
+          items:
+            format: email
+            type: string
+          type: array
+        bcc:
+          items:
+            format: email
+            type: string
+          type: array
+        replyTo:
+          items:
+            format: email
+            type: string
+          type: array
+        subject:
+          maxLength: 255
+          minLength: 1
+          type: string
+        content:
+          minLength: 1
+          type: string
+      type: object
+    AttachmentMetadata:
+      example:
+        filename: filename
+        size: 1048576
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        mimeType: application/pdf
+      properties:
+        id:
+          format: uuid
+          type: string
+        filename:
+          type: string
+        mimeType:
+          example: application/pdf
+          type: string
+        size:
+          description: File size in bytes.
+          example: 1048576
+          type: integer
+      required:
+      - filename
+      - id
+      - mimeType
+      - size
+      type: object
+    TransmissionResult:
+      example:
+        errorMessage: errorMessage
+        emailId: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        sentAt: 2000-01-23T04:56:07.000+00:00
+        status: draft
+      properties:
+        id:
+          format: uuid
+          type: string
+        emailId:
+          format: uuid
+          type: string
+        status:
+          $ref: '#/components/schemas/EmailStatus'
+        sentAt:
+          format: date-time
+          nullable: true
+          type: string
+        errorMessage:
+          nullable: true
+          type: string
+      required:
+      - emailId
+      - id
+      - status
+      type: object
+    PaginatedEmailList:
+      example:
+        totalItems: 1
+        limit: 6
+        totalPages: 5
+        page: 0
+        items:
+        - createdAt: 2000-01-23T04:56:07.000+00:00
+          subject: subject
+          from: from
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          to:
+          - to
+          - to
+          source: intern
+          sentAt: 2000-01-23T04:56:07.000+00:00
+          status: draft
+        - createdAt: 2000-01-23T04:56:07.000+00:00
+          subject: subject
+          from: from
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          to:
+          - to
+          - to
+          source: intern
+          sentAt: 2000-01-23T04:56:07.000+00:00
+          status: draft
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/EmailSummary'
+          type: array
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalItems:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+      - items
+      - limit
+      - page
+      - totalItems
+      - totalPages
+      type: object
+    ErrorResponse:
+      example:
+        code: VALIDATION_FAILED
+        details:
+        - details
+        - details
+        message: "At least one recipient (to, cc, bcc) must be provided."
+        timestamp: 2000-01-23T04:56:07.000+00:00
+      properties:
+        code:
+          example: VALIDATION_FAILED
+          type: string
+        message:
+          example: "At least one recipient (to, cc, bcc) must be provided."
+          type: string
+        timestamp:
+          format: date-time
+          type: string
+        details:
+          items:
+            type: string
+          type: array
+      required:
+      - code
+      - message
+      - timestamp
+      type: object
+    uploadAttachment_request:
+      properties:
+        file:
+          description: Binary file content to upload.
+          format: binary
+          type: string
+      required:
+      - file
+      type: object
